@@ -392,6 +392,50 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
+
+                  {/* SideBar Section */}
+                  <div className="space-y-4 mt-6 pt-6 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="side-toggle" className="text-base font-medium">Side Bar</Label>
+                      <Switch
+                        id="side-toggle"
+                        checked={settings.features.sideBar?.isEnabled || false}
+                        onCheckedChange={() => toggleFeature('sideBar')}
+                      />
+                    </div>
+
+                    {settings.features.sideBar?.isEnabled && (
+                      <div className="space-y-4 pl-4 border-l-2 border-gray-100">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="sidebar-shortcut">Shortcut Key</Label>
+                            <Input
+                              id="sidebar-shortcut"
+                              value={settings.features.sideBar?.keybind || 'Cmd+Enter'}
+                              onChange={(e) => updateFeatureConfig('sideBar', 'keybind', e.target.value)}
+                              placeholder="e.g., Cmd/Ctrl+Enter"
+                              className="text-sm"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="sidebar-position">Position</Label>
+                            <Select
+                              value={settings.features.sideBar?.position || 'left'}
+                              onValueChange={(value) => updateFeatureConfig('sideBar', 'position', value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="left">Left</SelectItem>
+                                <SelectItem value="right">Right</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
