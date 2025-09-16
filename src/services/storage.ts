@@ -82,6 +82,11 @@ export interface StorageData {
   model: string;
   customEndpoint?: string;
   debug: boolean;
+  personalization?: {
+    language?: string;
+    responseStyle?: string;
+    customInstructions?: string;
+  };
 }
 
 // Sync message interface

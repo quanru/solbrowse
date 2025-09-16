@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ClockIcon, PlusIcon, ArrowsPointingOutIcon, XMarkIcon, TrashIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import { Conversation } from '@src/services/storage';
 import { useConversationService } from '../hooks/useConversation';
+import { InputDialog } from '../ui/InputDialog';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 interface ChatHeaderProps {
   conversations: Conversation[];
@@ -30,21 +32,26 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
   const [dropdownSelectedIndex, setDropdownSelectedIndex] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Dialog states
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+
   const convService = useConversationService();
 
   const safeConversations = conversations || [];
 
-  // Close dropdown when clicking outside
+  // Handle keyboard events for dropdown
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && showDropdown) {
         setShowDropdown(false);
       }
     };
 
     if (showDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
     }
   }, [showDropdown]);
 
@@ -56,6 +63,38 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
   const handleConversationClick = (conversationId: string) => {
     onConversationSelect(conversationId);
     setShowDropdown(false);
+  };
+
+  // Dialog handlers
+  const handleRenameClick = (conversation: Conversation) => {
+    setSelectedConversation(conversation);
+    setShowRenameDialog(true);
+  };
+
+  const handleDeleteClick = (conversation: Conversation) => {
+    setSelectedConversation(conversation);
+    setShowDeleteDialog(true);
+  };
+
+  const handleRenameConfirm = async (newTitle: string) => {
+    if (selectedConversation && newTitle !== selectedConversation.title) {
+      await convService.renameConversation(selectedConversation.id, newTitle);
+    }
+    setSelectedConversation(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (selectedConversation) {
+      await convService.deleteConversation(selectedConversation.id);
+      setShowDropdown(false);
+    }
+    setSelectedConversation(null);
+  };
+
+  const handleDialogClose = () => {
+    setShowRenameDialog(false);
+    setShowDeleteDialog(false);
+    setSelectedConversation(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -163,11 +202,10 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                         <button
                           title="Rename"
                           className="p-1 hover:bg-black/5 rounded"
-                          onClick={async () => {
-                            const newTitle = prompt('Rename conversation:', conversation.title);
-                            if (newTitle && newTitle.trim() && newTitle !== conversation.title) {
-                              await convService.renameConversation(conversation.id, newTitle.trim());
-                            }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleRenameClick(conversation);
                           }}
                         >
                           <PencilSquareIcon className="w-4 h-4 text-gray-600" />
@@ -175,10 +213,10 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                         <button
                           title="Delete"
                           className="p-1 hover:bg-red-100 rounded"
-                          onClick={async () => {
-                            if (confirm('Delete this conversation?')) {
-                              await convService.deleteConversation(conversation.id);
-                            }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleDeleteClick(conversation);
                           }}
                         >
                           <TrashIcon className="w-4 h-4 text-red-600" />
@@ -192,6 +230,29 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
           )}
         </div>
       </div>
+
+      {/* Dialogs */}
+      <InputDialog
+        isOpen={showRenameDialog}
+        onClose={handleDialogClose}
+        onConfirm={handleRenameConfirm}
+        title="Rename Conversation"
+        placeholder="Enter conversation title"
+        defaultValue={selectedConversation?.title || ''}
+        confirmText="Save"
+        cancelText="Cancel"
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={handleDialogClose}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this conversation? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
 
       {/* Right side buttons */}
       <div className="flex items-center gap-2">

@@ -12,6 +12,7 @@ export default function Popup() {
   const [isLoading, setIsLoading] = useState(true);
   const [isConfigured, setIsConfigured] = useState(false);
   const [askKeybind, setAskKeybind] = useState('');
+  const [sideKeybind, setSideKeybind] = useState('');
   const [needsPermissions, setNeedsPermissions] = useState(false);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export default function Popup() {
       setSideEnabled(data.features.sideBar?.isEnabled || false);
       setIsConfigured(!!data.apiKey || data.provider === 'custom');
       setAskKeybind(data.features.askBar.keybind);
+      setSideKeybind(data.features.sideBar?.keybind || 'Cmd+Enter');
 
       // Check if permissions are granted (Firefox MV3 fix)
       try {
@@ -180,20 +182,18 @@ export default function Popup() {
         </div>
 
         {/* Side Feature */}
-        <div className="space-y-3 opacity-60 pointer-events-none select-none">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-gray-900">
               Side
-              <span className="ml-2 px-2 py-0.5 rounded bg-gray-200 text-xs font-medium text-gray-700">Coming soon</span>
             </h2>
             <Switch
-              checked={false}
-              disabled
-              onCheckedChange={() => {}}
+              checked={sideEnabled}
+              onCheckedChange={handleSideToggle}
             />
           </div>
           <p className="text-[14px] text-gray-600 leading-relaxed">
-            Press the expand button in Ask Bar or <kbd className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-[12px] font-mono border border-gray-200 mx-1">Cmd+Enter</kbd> for an expanded conversation view
+            Press <kbd className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-[12px] font-mono border border-gray-200 mx-1">{sideKeybind}</kbd> for an expanded conversation view
           </p>
         </div>
       </div>

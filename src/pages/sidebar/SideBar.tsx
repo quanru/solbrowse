@@ -1,35 +1,70 @@
 import '@src/utils/logger';
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { MemoisedMessages, useCopyMessage, ChatHeader, useConversationService, useChatInput } from '@src/components/index';
+import TabChipRow from '../../components/shared/TabChipRow';
+import InputArea from '../../components/shared/InputArea';
 
-export const SideBar: React.FC = () => {
+interface SideBarProps {
+  position?: string;
+  colorScheme?: 'light' | 'dark';
+}
+
+export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'left', colorScheme }) => {
   // UI-specific state
   const [isVisible, setIsVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const [position, setPosition] = useState<string>('left');
+  const [position, setPosition] = useState<string>(initialPosition);
 
   // Refs
   const sideBarRef = useRef<HTMLDivElement>(null);
   const mountTimeRef = useRef<number>(Date.now());
   
+  // Custom hooks for chat functionality
+  const { copiedMessageIndex, handleCopyMessage } = useCopyMessage();
+  const conversationService = useConversationService();
+  const chatInput = useChatInput();
+  
+  // Chat header handlers
+  const handleNewConversation = async () => {
+    try {
+      await conversationService.createNewConversation();
+    } catch (error) {
+      console.error('Sol SideBar: Failed to create new conversation:', error);
+    }
+  };
+
+  const handleConversationSelect = async (conversationId: string) => {
+    try {
+      await conversationService.switchToConversation(conversationId);
+    } catch (error) {
+      console.error('Sol SideBar: Failed to switch conversation:', error);
+    }
+  };
+  
   // Effects
   useEffect(() => {
     setIsVisible(true);
+    chatInput.inputRef.current?.focus();
   }, []);
 
-  // Position logic
+  // Update position when props change
+  useEffect(() => {
+    setPosition(initialPosition);
+  }, [initialPosition]);
+
+  // Apply color scheme
+  useEffect(() => {
+    if (colorScheme) {
+      (document.documentElement as HTMLElement).style.colorScheme = colorScheme;
+      (document.documentElement as HTMLElement).style.background = 'transparent';
+      (document.body as HTMLElement).style.background = 'transparent';
+    }
+  }, [colorScheme]);
+
+  // Close trigger logic
   useLayoutEffect(() => {
     const messageHandler = (event: MessageEvent) => {
-      if (event.data?.type === 'sol-init') {
-        if (event.data.position) {
-          setPosition(event.data.position);
-        }
-        if (event.data.colorScheme) {
-          (document.documentElement as HTMLElement).style.colorScheme = event.data.colorScheme;
-          (document.documentElement as HTMLElement).style.background = 'transparent';
-          (document.body as HTMLElement).style.background = 'transparent';
-        }
-      } else if (event.data?.type === 'sol-trigger-close') {
+      if (event.data?.type === 'sol-trigger-close') {
         handleClose();
       }
     };
@@ -75,29 +110,79 @@ export const SideBar: React.FC = () => {
       style={{
         opacity: isVisible ? 1 : 0,
         transform: `scale(${isVisible && !isClosing ? 1 : 0.95}) translateX(${isVisible && !isClosing ? 0 : position === 'left' ? '-20px' : '20px'})`,
-        width: '300px'
+        width: '500px'
       }}
       tabIndex={0}
     >
       <div 
-        className="h-full backdrop-blur-[16px] border-r-[0.5px] border-black/[0.07] transition-all duration-300 ease-in-out sol-conversation-shadow sol-font-inter flex flex-col relative"
+        className={`h-full backdrop-blur-[16px] ${position === 'right' ? 'border-l-[0.5px]' : 'border-r-[0.5px]'} border-black/[0.07] transition-all duration-300 ease-in-out sol-conversation-shadow sol-font-inter flex flex-col relative`}
         style={{ 
           backgroundColor: 'rgba(255, 255, 255, 0.8)'
         }}
       >
-        {/* X button at top right */}
-        <button
-          onClick={handleClose}
-          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-black/5 transition-colors z-10"
-        >
-          <XMarkIcon className="w-6 h-6 text-gray-600" />
-        </button>
+        {/* Chat Header - fixed at top */}
+        <div className="flex-shrink-0 p-4 border-b border-black/5">
+          <ChatHeader
+            conversations={conversationService.conversations}
+            activeConversationId={conversationService.activeConversationId}
+            onConversationSelect={handleConversationSelect}
+            onNewConversation={handleNewConversation}
+            showExpandButton={false}
+            showCloseButton={true}
+            onClose={handleClose}
+          />
+        </div>
 
-        {/* Coming Soon Content */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-black" style={{ opacity: 0.5 }}>Coming Soon</h2>
+        {/* Tab Chips Row */}
+        {chatInput.selectedTabChips.length > 0 && (
+          <div className="flex-shrink-0 px-4 py-2 border-b border-black/5">
+            <TabChipRow
+              tabs={chatInput.selectedTabChips}
+              onRemove={chatInput.handleTabRemoveById}
+            />
           </div>
+        )}
+
+        {/* Messages Area - scrollable */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {conversationService.messages.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center text-gray-400">
+                <p className="text-sm">Start a conversation</p>
+              </div>
+            </div>
+          ) : (
+            <MemoisedMessages
+              messages={conversationService.messages}
+              onCopyMessage={handleCopyMessage}
+              copiedMessageIndex={copiedMessageIndex}
+              isStreaming={chatInput.isStreaming}
+              availableTabs={chatInput.availableTabs}
+              onTabReAdd={chatInput.handleTabReAdd}
+            />
+          )}
+        </div>
+
+        {/* Input Area - fixed at bottom */}
+        <div className="flex-shrink-0 p-4 border-t border-black/5">
+          <InputArea
+            input={chatInput.input}
+            onInputChange={chatInput.handleInputChange}
+            onInputKeyDown={chatInput.handleInputKeyDown}
+            inputRef={chatInput.inputRef}
+            showDropdown={chatInput.showDropdown}
+            filteredTabs={chatInput.filteredTabs}
+            dropdownSelectedIndex={chatInput.dropdownSelectedIndex}
+            insertTabMention={chatInput.insertTabMention}
+            dropdownRef={chatInput.dropdownRef}
+            setDropdownSelectedIndex={chatInput.setDropdownSelectedIndex}
+            truncateTitle={chatInput.truncateTitle}
+            searchTerm={chatInput.searchTerm}
+            onSubmit={chatInput.handleSubmit}
+            isStreaming={chatInput.isStreaming}
+            showCloseButton={false}
+            placeholder="Ask a question..."
+          />
         </div>
       </div>
     </div>

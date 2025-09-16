@@ -293,13 +293,66 @@ export default function Dashboard() {
           <TabsContent value="general" className="space-y-6">
             {/* Personalization */}
             <div className="bg-white rounded-xl border border-gray-200/60 p-6 shadow-sm">
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900 mb-1">Personalization</h2>
                   <p className="text-sm text-gray-600">Customize Sol to match your preferences</p>
                 </div>
-                <div className="text-center py-12 text-gray-500">
-                  <p>Personalization settings coming soon...</p>
+                
+                <div className="space-y-4">
+                  {/* Language Preference */}
+                  <div className="space-y-2">
+                    <Label htmlFor="response-language">Response Language</Label>
+                    <Select
+                      value={settings.personalization?.language || 'auto'}
+                      onValueChange={(value) => updateSetting('personalization', { ...settings.personalization, language: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto-detect</SelectItem>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="zh">中文</SelectItem>
+                        <SelectItem value="es">Español</SelectItem>
+                        <SelectItem value="fr">Français</SelectItem>
+                        <SelectItem value="de">Deutsch</SelectItem>
+                        <SelectItem value="ja">日本語</SelectItem>
+                        <SelectItem value="ko">한국어</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Response Style */}
+                  <div className="space-y-2">
+                    <Label htmlFor="response-style">Response Style</Label>
+                    <Select
+                      value={settings.personalization?.responseStyle || 'balanced'}
+                      onValueChange={(value) => updateSetting('personalization', { ...settings.personalization, responseStyle: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="concise">Concise</SelectItem>
+                        <SelectItem value="balanced">Balanced</SelectItem>
+                        <SelectItem value="detailed">Detailed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Custom Instructions */}
+                  <div className="space-y-2">
+                    <Label htmlFor="custom-instructions">Custom Instructions (Optional)</Label>
+                    <textarea
+                      id="custom-instructions"
+                      className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none"
+                      rows={3}
+                      placeholder="e.g., Always respond in bullet points, use simple language..."
+                      value={settings.personalization?.customInstructions || ''}
+                      onChange={(e) => updateSetting('personalization', { ...settings.personalization, customInstructions: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -607,11 +660,11 @@ export default function Dashboard() {
                     <h2 className="text-lg font-semibold text-gray-900">Conversation History</h2>
                     <p className="text-sm text-gray-600">Manage your past conversations</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button
                       onClick={exportAllConversations}
                       disabled={conversations.length === 0}
-                      className="sol-button-small"
+                      className="sol-button-small flex-shrink-0"
                     >
                       <DocumentArrowDownIcon className="w-4 h-4 mr-2" />
                       Export All
@@ -619,7 +672,7 @@ export default function Dashboard() {
                     <Button
                       onClick={deleteAllConversationsHandler}
                       disabled={conversations.length === 0}
-                      className="sol-button-danger"
+                      className="sol-button-danger flex-shrink-0"
                     >
                       <TrashIcon className="w-4 h-4 mr-2" />
                       Delete All

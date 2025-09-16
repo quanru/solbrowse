@@ -158,9 +158,13 @@ export class SideBarController {
       if (changes.features) {
         const newFeatures = changes.features.newValue as any;
         if (newFeatures?.sideBar) {
+          const oldKeybind = this.targetKeybindString;
           this.sideBarEnabled = newFeatures.sideBar.isEnabled;
           this.targetKeybindString = newFeatures.sideBar.keybind;
-          this.setupKeybindListener(this.targetKeybindString);
+          
+          if (oldKeybind !== this.targetKeybindString) {
+            this.setupKeybindListener(this.targetKeybindString);
+          }
 
           if (!this.sideBarEnabled && this.isSideBarVisible) {
             this.hide();

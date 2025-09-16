@@ -639,12 +639,18 @@ export class conversation {
 
   private generateConversationTitle(content: string): string {
     // Clean and truncate the content to create a meaningful title
-    const cleaned = content
+    // First remove tab mentions like 🔗TabName🔗
+    let cleaned = content.replace(/🔗[^🔗]+🔗/g, '').trim();
+    
+    // Then clean up extra spaces and some control characters, but keep unicode characters
+    cleaned = cleaned
       .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
-      .replace(/[^\w\s\-.,!?]/g, '') // Remove special characters except basic punctuation
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters but keep printable unicode
       .trim();
     
-    if (cleaned.length === 0) return 'Untitled Conversation';
+    if (cleaned.length === 0) {
+      return 'Untitled Conversation';
+    }
     
     if (cleaned.length <= 50) {
       return cleaned;
@@ -670,6 +676,7 @@ export class conversation {
     // Auto-generate title for new conversations from first user message
     if (this.globalState.activeConversationId && this.globalState.messages.length === 1) {
       const conversation = await this.getConversation(this.globalState.activeConversationId);
+      
       if (conversation && conversation.title === 'New Conversation') {
         const newTitle = this.generateConversationTitle(content);
         await this.updateConversation(this.globalState.activeConversationId, { title: newTitle });
