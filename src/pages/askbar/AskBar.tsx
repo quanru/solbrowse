@@ -188,7 +188,20 @@ export const AskBar: React.FC = () => {
         maxWidth: '90vw',
         maxHeight: '90vh'
       }}
-      onKeyDown={handleKeyDown}
+      onKeyDown={(e) => {
+        // Handle internal shortcuts (like Escape to close)
+        handleKeyDown(e);
+        // Prevent keyboard events from bubbling to page to avoid triggering page shortcuts
+        e.stopPropagation();
+      }}
+      onKeyUp={(e) => {
+        // Prevent keyup events from bubbling to the page
+        e.stopPropagation();
+      }}
+      onKeyPress={(e) => {
+        // Prevent keypress events from bubbling to the page
+        e.stopPropagation();
+      }}
       tabIndex={0}
     >
       <div

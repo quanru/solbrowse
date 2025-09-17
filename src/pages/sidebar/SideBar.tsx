@@ -112,6 +112,18 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
         transform: `scale(${isVisible && !isClosing ? 1 : 0.95}) translateX(${isVisible && !isClosing ? 0 : position === 'left' ? '-20px' : '20px'})`,
         width: '500px'
       }}
+      onKeyDown={(e) => {
+        // Prevent keyboard events from bubbling to page to avoid triggering page shortcuts
+        e.stopPropagation();
+      }}
+      onKeyUp={(e) => {
+        // Prevent keyup events from bubbling to the page
+        e.stopPropagation();
+      }}
+      onKeyPress={(e) => {
+        // Prevent keypress events from bubbling to the page
+        e.stopPropagation();
+      }}
       tabIndex={0}
     >
       <div 

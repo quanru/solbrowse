@@ -169,6 +169,15 @@ export class SideBarController {
           if (!this.sideBarEnabled && this.isSideBarVisible) {
             this.hide();
           }
+
+          // Handle position changes: if sidebar is currently visible, recreate it with new position
+          if (this.isSideBarVisible) {
+            this.hide();
+            // Wait a frame to ensure cleanup is complete before showing again
+            setTimeout(() => {
+              this.show();
+            }, 0);
+          }
         }
       }
     });

@@ -90,12 +90,30 @@ const InputArea: React.FC<Props> = ({
   return (
     <div className="relative">
       {/* Single, smart layout with flex-wrap */}
-      <div className="flex flex-wrap items-center gap-[14px]">
+      <div 
+        className="flex flex-wrap items-center gap-[14px]"
+        onKeyDown={(e) => {
+          // Prevent all keyboard events from bubbling to the page
+          e.stopPropagation();
+        }}
+        onKeyUp={(e) => {
+          // Also prevent keyup events from bubbling
+          e.stopPropagation();
+        }}
+        onKeyPress={(e) => {
+          // And keypress events
+          e.stopPropagation();
+        }}
+      >
         <textarea
           ref={inputRef}
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
-          onKeyDown={onInputKeyDown}
+          onKeyDown={(e) => {
+            // Prevent event bubbling to page to avoid triggering page shortcuts
+            e.stopPropagation();
+            onInputKeyDown(e);
+          }}
           placeholder={placeholder || "Ask a question about this page..."}
           rows={1}
           className="flex-grow border-none resize-none bg-transparent sol-font-inter sol-input-text placeholder:text-black/40 placeholder:font-medium focus:outline-none p-0"

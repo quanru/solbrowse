@@ -1,10 +1,6 @@
-import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import AskBar from '@src/pages/askbar/AskBar';
 import SideBar from '@src/pages/sidebar/SideBar';
-
-// Import styles
-import '@src/assets/styles/chat.css';
 
 interface ShadowRenderConfig {
   containerId: string;
