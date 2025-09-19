@@ -56,15 +56,14 @@ export default function Dashboard() {
     window.location.hash = value;
   };
 
-  // Load conversations with proper error handling
+  // Load conversations with proper error handling - use direct unified storage
   const loadConversations = useCallback(async () => {
     try {
       setIsLoadingConversations(true);
       setConversationError(null);
       
-      // Use UiPortService to get conversations from background service
-      const uiPortService = UiPortService.getInstance();
-      const conversationsData = await uiPortService.getConversations();
+      // Direct access to unified storage via conversation service
+      const conversationsData = await conversation.getConversations();
       setConversations(conversationsData);
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -199,12 +198,15 @@ export default function Dashboard() {
     if (!confirm('Are you sure you want to delete this conversation?')) return;
     
     try {
+      // Optimistically update UI first
+      setConversations(prev => prev.filter(conv => conv.id !== id));
+      
+      // Then delete from storage
       await conversation.deleteConversation(id);
-      // Reload conversations after deletion
-      await loadConversations();
     } catch (error) {
       console.error('Error deleting conversation:', error);
-      // Show user-friendly error message
+      // Revert UI on error
+      await loadConversations();
       alert('Failed to delete conversation. Please try again.');
     }
   };
