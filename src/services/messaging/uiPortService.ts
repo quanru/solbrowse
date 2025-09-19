@@ -59,14 +59,26 @@ export class UiPortService {
 
   private connect(): void {
     try {
-      console.log('Sol UiPortService: Connecting to background...');
+      
+      // Check if extension context is valid
+      if (!browser.runtime?.id) {
+        throw new Error('Extension context is invalid - browser.runtime.id is undefined');
+      }
+      
       this.port = browser.runtime.connect({ name: PORT_NAMES.UI_PORT });
       this.setupPortHandlers();
       this.isConnected = true;
-      console.log('Sol UiPortService: Connected successfully');
+      
+      // Test the connection with a ping
+      this.testConnection();
     } catch (error) {
-      console.error('Sol UiPortService: Connection failed:', error);
+      console.error('UiPortService: Connection failed:', error);
       this.isConnected = false;
+      
+      // Schedule retry
+      setTimeout(() => {
+        this.connect();
+      }, 2000);
     }
   }
 
@@ -76,7 +88,6 @@ export class UiPortService {
     this.port.onMessage.addListener((message: unknown) => {
       const typedMessage = message as UiPortMsg;
       if (!typedMessage || typeof typedMessage !== 'object' || !typedMessage.type) {
-        console.warn('Sol UiPortService: Invalid message format:', message);
         return;
       }
 
@@ -84,35 +95,31 @@ export class UiPortService {
     });
 
     this.port.onDisconnect.addListener(() => {
-      console.log('Sol UiPortService: Port disconnected');
+      const error = browser.runtime.lastError;
+      
       this.isConnected = false;
-      this.rejectAllPendingRequests(new Error('Port disconnected'));
+      this.rejectAllPendingRequests(new Error(`Port disconnected: ${error?.message || 'Unknown reason'}`));
       
       // Attempt to reconnect after a delay
       setTimeout(() => {
         if (!this.isConnected) {
-          console.log('Sol UiPortService: Attempting to reconnect...');
           this.connect();
         }
       }, 1000);
     });
   }
 
+  private testConnection(): void {
+    // Test connection by requesting tab list
+    this.listTabs()
+      .then(() => {
+      })
+      .catch((error) => {
+        this.isConnected = false;
+      });
+  }
+
   private handleMessage(message: UiPortMsg): void {
-    // Only log meaningful messages
-    if (message.type === 'TABS_RESPONSE') {
-      if ((message as any).tabs?.length > 0) {
-        console.log('Sol UiPortService: Received TABS_RESPONSE:', (message as any).tabs.length, 'tabs');
-      }
-    } else if (message.type === 'LLM_DELTA') {
-      // Log only non-empty deltas to avoid console spam
-      const delta = (message as any).delta || '';
-      if (delta.trim().length > 0) {
-        console.log('Sol UiPortService: LLM_DELTA length', delta.length);
-      }
-    } else {
-      console.log('Sol UiPortService: Received message:', message.type);
-    }
 
     switch (message.type) {
       case 'CONTENT_RESPONSE':
@@ -120,6 +127,9 @@ export class UiPortService {
         break;
       case 'TABS_RESPONSE':
         this.handleTabsResponse(message);
+        break;
+      case 'CONVERSATIONS_RESPONSE':
+        this.handleConversationsResponse(message);
         break;
       case 'LLM_DELTA':
         this.handleLlmDelta(message);
@@ -131,7 +141,6 @@ export class UiPortService {
         this.handleLlmError(message);
         break;
       default:
-        console.warn('Sol UiPortService: Unknown message type:', (message as any).type);
     }
   }
 
@@ -147,6 +156,14 @@ export class UiPortService {
     const request = this.pendingRequests.get(message.requestId);
     if (request && request.type === 'LIST_TABS') {
       request.resolve(message.tabs);
+      this.pendingRequests.delete(message.requestId);
+    }
+  }
+
+  private handleConversationsResponse(message: any): void {
+    const request = this.pendingRequests.get(message.requestId);
+    if (request && request.type === 'GET_CONVERSATIONS') {
+      request.resolve(message.conversations);
       this.pendingRequests.delete(message.requestId);
     }
   }
@@ -188,14 +205,17 @@ export class UiPortService {
 
   private sendMessage(message: UiPortMsg): void {
     if (!this.port || !this.isConnected) {
-      throw new Error('Not connected to background script');
+      const error = new Error('Not connected to background script');
+      console.error('UiPortService:', error.message);
+      throw error;
     }
 
     try {
       this.port.postMessage(message);
     } catch (error) {
-      console.error('Sol UiPortService: Failed to send message:', error);
-      throw new Error('Failed to send message to background script');
+      console.error('UiPortService: Failed to send message:', error);
+      this.isConnected = false;
+      throw new Error(`Failed to send message to background script: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -212,6 +232,49 @@ export class UiPortService {
       }
     });
     this.streamingCallbacks.clear();
+  }
+
+  /**
+   * Get conversations from background service
+   */
+  async getConversations(): Promise<any[]> {
+    if (!this.isConnected || !this.port) {
+      throw new Error('Not connected to background script');
+    }
+
+    const requestId = this.generateRequestId();
+    
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error('Conversations request timed out'));
+      }, 30000); // 30 second timeout for checking multiple tabs
+
+      this.pendingRequests.set(requestId, {
+        resolve: (conversations: any[]) => {
+          clearTimeout(timeout);
+          resolve(Array.isArray(conversations) ? conversations : []);
+        },
+        reject: (error: Error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        type: 'GET_CONVERSATIONS'
+      });
+
+      const message = {
+        type: 'GET_CONVERSATIONS',
+        requestId
+      };
+
+      try {
+        this.sendMessage(message);
+      } catch (error) {
+        clearTimeout(timeout);
+        this.pendingRequests.delete(requestId);
+        reject(error);
+      }
+    });
   }
 
   /**

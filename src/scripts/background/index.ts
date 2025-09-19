@@ -13,10 +13,12 @@ import {
   UiListTabsMsg,
   UiContentResponseMsg,
   UiTabsResponseMsg,
+  UiGetConversationsMsg,
+  UiConversationsResponseMsg,
   GetCurrentTabIdResponseMsg
 } from '@src/types/messaging';
+import storage from '@src/services/storage';
 
-console.log("Sol Background Script Loaded");
 
 // Initialize managers
 const portManager = PortManager.getInstance();
@@ -43,12 +45,10 @@ browser.storage.onChanged.addListener((changes, area) => {
 const checkAndResetSchema = async () => {
   try {
     if (await settingsService.needsSchemaReset()) {
-      console.log('Sol Background: Resetting storage due to schema change');
       await settingsService.resetToDefaults();
-      console.log('Sol Background: Storage reset completed');
     }
   } catch (error) {
-    console.error('Sol Background: Error during schema check:', error);
+    console.error('Background: Error during schema check:', error);
   }
 };
 
@@ -59,6 +59,48 @@ const keepAlive = () => {
       // Ignore errors, this is just to keep the service worker alive
     });
   }, 20000);
+};
+
+// Function to prioritize tabs that are more likely to have conversation data
+const getTabPriority = (url: string): number => {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    
+    // High priority: Development and coding sites
+    if (hostname.includes('github.com') || 
+        hostname.includes('gitlab.com') ||
+        hostname.includes('stackoverflow.com') ||
+        hostname.includes('codepen.io') ||
+        hostname.includes('replit.com') ||
+        hostname.includes('codesandbox.io')) {
+      return 100;
+    }
+    
+    // Medium priority: Documentation and tech sites
+    if (hostname.includes('docs.') ||
+        hostname.includes('developer.') ||
+        hostname.includes('dev.') ||
+        hostname.includes('api.') ||
+        hostname.includes('npmjs.com') ||
+        hostname.includes('pypi.org')) {
+      return 50;
+    }
+    
+    // Lower priority: Social media and news sites (less likely to have programming conversations)
+    if (hostname.includes('twitter.com') ||
+        hostname.includes('x.com') ||
+        hostname.includes('facebook.com') ||
+        hostname.includes('instagram.com') ||
+        hostname.includes('tiktok.com') ||
+        hostname.includes('news.')) {
+      return 10;
+    }
+    
+    // Default priority for other sites
+    return 30;
+  } catch {
+    return 0;
+  }
 };
 
 // Consolidated function to process tab snapshots into page format
@@ -98,19 +140,13 @@ const ensureTabsHaveContent = async (tabIds: number[]): Promise<void> => {
 
   const logSnapshotState = (ids: number[]) => {
     ids.forEach(id => {
-      const snap = snapshotManager.getLatestSnapshot(id);
-      console.log(`Sol Background: Snapshot for tab ${id}:`, snap ? `content length ${snap.content?.length || 0}, ts ${snap.timestamp}` : 'NONE');
     });
   };
 
   let tabsWithoutContent = tabIds.filter(needsContent);
   if (tabsWithoutContent.length === 0) {
-    console.log('Sol Background: All mentioned tabs already have fresh content.');
     return;
   }
-
-  console.log(`Sol Background: Ensuring content is available for tabs: ${tabsWithoutContent.join(', ')}`);
-  logSnapshotState(tabsWithoutContent);
 
   // Trigger scraping for tabs without content
   for (const tabId of tabsWithoutContent) {
@@ -130,7 +166,6 @@ const ensureTabsHaveContent = async (tabIds: number[]): Promise<void> => {
         }
       });
     } catch (error) {
-      console.warn(`Sol Background: Could not trigger scrape for tab ${tabId}:`, error);
     }
   }
 
@@ -140,22 +175,16 @@ const ensureTabsHaveContent = async (tabIds: number[]): Promise<void> => {
     await new Promise(res => setTimeout(res, pollIntervalMs));
     tabsWithoutContent = tabIds.filter(needsContent);
     if (tabsWithoutContent.length === 0) {
-      console.log('Sol Background: All tab content retrieved within wait period.');
       break;
     }
   }
 
-  if (tabsWithoutContent.length > 0) {
-    console.warn('Sol Background: Some tabs still lack content after wait:', tabsWithoutContent);
-    logSnapshotState(tabsWithoutContent);
-  }
 };
 
 // Setup messaging handlers
 const setupMessageHandlers = () => {
   // Content script handlers
   portManager.addContentHandler<ContentInitMsg>('INIT_SCRAPE', (message, port) => {
-    console.log(`Sol Background: Initial scrape for tab ${message.tabId}, content length: ${message.html.length}`);
     
     snapshotManager.addSnapshot({
       tabId: message.tabId,
@@ -167,7 +196,6 @@ const setupMessageHandlers = () => {
   });
 
   portManager.addContentHandler<ContentDeltaMsg>('DELTA_SCRAPE', (message, port) => {
-    console.log(`Sol Background: Delta scrape for tab ${message.tabId}, change: ${message.changeType}, content length: ${message.html.length}`);
     
     snapshotManager.addSnapshot({
       tabId: message.tabId,
@@ -180,7 +208,6 @@ const setupMessageHandlers = () => {
 
   // UI request handlers (these send responses)
   portManager.addRequestHandler<UiGetContentMsg, UiContentResponseMsg>('GET_CONTENT', async (message, port) => {
-    console.log(`Sol Background: Content request for tabs: ${message.tabIds.join(', ')}`);
     
     const snapshots = snapshotManager.getLatestSnapshots(message.tabIds);
     const pages = processTabSnapshots(snapshots, message.tabIds);
@@ -210,7 +237,7 @@ const setupMessageHandlers = () => {
         tabs: tabList
       };
     } catch (error) {
-      console.error('Sol Background: Error listing tabs:', error);
+      console.error('Background: Error listing tabs:', error);
       return {
         type: 'TABS_RESPONSE',
         requestId: message.requestId,
@@ -219,8 +246,141 @@ const setupMessageHandlers = () => {
     }
   });
 
+  portManager.addRequestHandler<UiGetConversationsMsg, UiConversationsResponseMsg>('GET_CONVERSATIONS', async (message, port) => {
+    try {
+      // Try to get conversations from content scripts by executing script in web pages
+      // Try to execute script in any available tab that might have content script
+      const allTabs = await browser.tabs.query({});
+      
+      // Filter and prioritize tabs
+      const validTabs = allTabs.filter(tab => {
+        if (!tab.id || !tab.url) return false;
+        
+        // Skip extension pages and special URLs
+        if (tab.url.startsWith('chrome://') || 
+            tab.url.startsWith('chrome-extension://') ||
+            tab.url.startsWith('moz-extension://') ||
+            tab.url.startsWith('about:') ||
+            tab.url.startsWith('data:')) {
+          return false;
+        }
+        return true;
+      });
+      
+      // Prioritize tabs that are more likely to have conversation data
+      const prioritizedTabs = validTabs.sort((a, b) => {
+        const aPriority = getTabPriority(a.url || '');
+        const bPriority = getTabPriority(b.url || '');
+        return bPriority - aPriority; // Higher priority first
+      });
+      
+      // Limit to first 10 tabs to avoid timeout
+      const tabsToCheck = prioritizedTabs.slice(0, 10);
+      
+      for (const tab of tabsToCheck) {
+        
+        try {
+          const results = await browser.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: async () => {
+              try {
+                // Wait a bit for content script to initialize if needed
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Access the conversation service from the content script context
+                const solContentScript = (window as any).solContentScript;
+                if (solContentScript?.conversationService) {
+                  const conversations = await solContentScript.conversationService.getConversations();
+                  return { success: true, conversations, tabId: (window as any).solTabId };
+                } else {
+                  return { success: false, conversations: [], reason: 'no_service' };
+                }
+              } catch (error) {
+                console.error('Error getting conversations:', error);
+                return { success: false, conversations: [], reason: error.message };
+              }
+            }
+          });
+          
+          if (results && results[0] && results[0].result) {
+            const result = results[0].result;
+            
+            if (result.success && result.conversations.length > 0) {
+              return {
+                type: 'CONVERSATIONS_RESPONSE',
+                requestId: message.requestId,
+                conversations: result.conversations
+              };
+            }
+          }
+        } catch (scriptError) {
+          // Continue to next tab
+        }
+      }
+      
+      // Fallback: Get conversations from background storage
+      
+      // Fallback: Get conversations from background storage
+      const dbConversations = await storage.database.conversations
+        .orderBy('updatedAt')
+        .reverse()
+        .toArray();
+      
+      
+      // Load messages for each conversation
+      const conversations = await Promise.all(
+        dbConversations.map(async (dbConv) => {
+          try {
+            const messages = await storage.database.messages
+              .where('[convId+idx]')
+              .between([dbConv.id, 0], [dbConv.id, Infinity])
+              .toArray();
+            
+            return {
+              id: dbConv.id,
+              title: dbConv.title,
+              url: dbConv.url,
+              messages: messages.map(msg => {
+                const textPart = msg.parts.find(p => p.type === 'text');
+                return {
+                  type: msg.type,
+                  content: textPart?.text || '',
+                  timestamp: msg.timestamp,
+                  tabIds: msg.tabIds
+                };
+              }),
+              createdAt: dbConv.createdAt,
+              updatedAt: dbConv.updatedAt
+            };
+          } catch (msgError) {
+            return {
+              id: dbConv.id,
+              title: dbConv.title,
+              url: dbConv.url,
+              messages: [],
+              createdAt: dbConv.createdAt,
+              updatedAt: dbConv.updatedAt
+            };
+          }
+        })
+      );
+
+      return {
+        type: 'CONVERSATIONS_RESPONSE',
+        requestId: message.requestId,
+        conversations
+      };
+    } catch (error) {
+      console.error('Background: Error getting conversations:', error);
+      return {
+        type: 'CONVERSATIONS_RESPONSE',
+        requestId: message.requestId,
+        conversations: []
+      };
+    }
+  });
+
   portManager.addUiHandler<UiUserPromptMsg>('USER_PROMPT', async (message, port) => {
-    console.log(`Sol Background: User prompt for tabs: ${message.tabIds.join(', ')}`);
     
     try {
       await ensureTabsHaveContent(message.tabIds);
@@ -228,7 +388,6 @@ const setupMessageHandlers = () => {
       const snapshots = snapshotManager.getLatestSnapshots(message.tabIds);
       const pages = processTabSnapshots(snapshots, message.tabIds);
 
-      console.log('Sol Background: Retrieved page snapshots:', pages.map(p => ({ id: p.tabId, title: p.title, contentLen: p.content.length })));
 
       const settings = await settingsService.getAll();
       
@@ -274,7 +433,6 @@ const setupMessageHandlers = () => {
       // Add current user message with notice
       messages.push({ role: 'user', content: message.prompt + contextNotice });
 
-      console.log(`Sol Background: Sending ${messages.length} messages to LLM (${message.conversationHistory?.length || 0} history messages)`);
       
       // Start streaming
       await ApiService.streamChatCompletion({
@@ -308,7 +466,7 @@ const setupMessageHandlers = () => {
       });
 
     } catch (error) {
-      console.error('Sol Background: Error handling user prompt:', error);
+      console.error('Background: Error handling user prompt:', error);
       portManager.sendToUiPort(port, {
         type: 'LLM_ERROR',
         requestId: message.requestId,
@@ -321,38 +479,262 @@ const setupMessageHandlers = () => {
 // Setup direct message handler for content script requests
 browser.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   if (message?.type === 'GET_CURRENT_TAB_ID' && sender.tab?.id) {
-    console.log(`Sol Background: Providing tab ID ${sender.tab.id} to content script`);
     const response: GetCurrentTabIdResponseMsg = {
       tabId: sender.tab.id
     };
     sendResponse(response);
+    return true;
   }
+  
+  // Handle unified conversation storage requests
+  if (message?.type === 'GET_ALL_CONVERSATIONS') {
+    handleGetAllConversations().then(conversations => {
+      sendResponse({ conversations });
+    }).catch(error => {
+      console.error('Sol Background: Error getting all conversations:', error);
+      sendResponse({ conversations: [] });
+    });
+    return true;
+  }
+  
+  if (message?.type === 'GET_CONVERSATION') {
+    handleGetConversation(message.id).then(conversation => {
+      sendResponse({ conversation });
+    }).catch(error => {
+      console.error('Sol Background: Error getting conversation:', error);
+      sendResponse({ conversation: null });
+    });
+    return true;
+  }
+  
+  if (message?.type === 'SAVE_CONVERSATION') {
+    handleSaveConversation(message.conversation).then(() => {
+      sendResponse({ success: true });
+    }).catch(error => {
+      console.error('Sol Background: Error saving conversation:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+  
+  if (message?.type === 'UPDATE_CONVERSATION') {
+    handleUpdateConversation(message.id, message.updates).then(() => {
+      sendResponse({ success: true });
+    }).catch(error => {
+      console.error('Sol Background: Error updating conversation:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+  
+  if (message?.type === 'DELETE_CONVERSATION') {
+    handleDeleteConversation(message.id).then(() => {
+      sendResponse({ success: true });
+    }).catch(error => {
+      console.error('Sol Background: Error deleting conversation:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+  
+  if (message?.type === 'DELETE_ALL_CONVERSATIONS') {
+    handleDeleteAllConversations().then(() => {
+      sendResponse({ success: true });
+    }).catch(error => {
+      console.error('Sol Background: Error deleting all conversations:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+  
   return true; // Always return true to keep channel open
 });
+
+// Unified conversation storage handlers
+async function handleGetAllConversations() {
+  try {
+    // Get conversations from background storage (unified approach)
+    const dbConversations = await storage.database.conversations
+      .orderBy('updatedAt')
+      .reverse()
+      .toArray();
+    
+    // Convert to expected format with messages
+    const conversations = await Promise.all(
+      dbConversations.map(async (dbConv) => {
+        const messages = await storage.database.messages
+          .where('[convId+idx]')
+          .between([dbConv.id, 0], [dbConv.id, Infinity])
+          .toArray();
+        
+        return {
+          id: dbConv.id,
+          title: dbConv.title,
+          url: dbConv.url,
+          messages: messages.map(msg => {
+            const textPart = msg.parts.find(p => p.type === 'text');
+            return {
+              type: msg.type,
+              content: textPart?.text || '',
+              timestamp: msg.timestamp,
+              tabIds: msg.tabIds
+            };
+          }),
+          createdAt: dbConv.createdAt,
+          updatedAt: dbConv.updatedAt
+        };
+      })
+    );
+    
+    return conversations;
+  } catch (error) {
+    console.error('Sol Background: Error in handleGetAllConversations:', error);
+    return [];
+  }
+}
+
+async function handleGetConversation(id: string) {
+  try {
+    const dbConversation = await storage.database.conversations.get(id);
+    if (!dbConversation) {
+      return null;
+    }
+
+    const messages = await storage.database.messages
+      .where('[convId+idx]')
+      .between([id, 0], [id, Infinity])
+      .toArray();
+
+    return {
+      id: dbConversation.id,
+      title: dbConversation.title,
+      url: dbConversation.url,
+      messages: messages.map(msg => {
+        const textPart = msg.parts.find(p => p.type === 'text');
+        return {
+          type: msg.type,
+          content: textPart?.text || '',
+          timestamp: msg.timestamp,
+          tabIds: msg.tabIds
+        };
+      }),
+      createdAt: dbConversation.createdAt,
+      updatedAt: dbConversation.updatedAt
+    };
+  } catch (error) {
+    console.error('Sol Background: Error in handleGetConversation:', error);
+    return null;
+  }
+}
+
+async function handleSaveConversation(conversation: any) {
+  try {
+    // Save conversation to background storage
+    await storage.database.conversations.put({
+      id: conversation.id,
+      title: conversation.title,
+      url: conversation.url,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt
+    });
+    
+    // Save messages
+    for (let i = 0; i < conversation.messages.length; i++) {
+      const msg = conversation.messages[i];
+      await storage.database.messages.put({
+        id: `${conversation.id}_${i}`,
+        convId: conversation.id,
+        idx: i,
+        type: msg.type,
+        parts: [{ type: 'text', text: msg.content }],
+        timestamp: msg.timestamp,
+        tabIds: msg.tabIds
+      });
+    }
+  } catch (error) {
+    console.error('Sol Background: Error in handleSaveConversation:', error);
+    throw error;
+  }
+}
+
+async function handleUpdateConversation(id: string, updates: any) {
+  try {
+    // Update conversation metadata
+    const convUpdates: any = { updatedAt: Date.now() };
+    if (updates.title !== undefined) {
+      convUpdates.title = updates.title;
+    }
+    
+    await storage.database.conversations.update(id, convUpdates);
+
+    // Handle message updates if provided
+    if (updates.messages) {
+      // Clear existing messages for this conversation
+      await storage.database.messages.where('convId').equals(id).delete();
+      
+      // Add all new messages
+      for (let i = 0; i < updates.messages.length; i++) {
+        const message = updates.messages[i];
+        await storage.database.messages.put({
+          id: `${id}_msg_${i}`,
+          convId: id,
+          idx: i,
+          type: message.type,
+          parts: [{ type: 'text', text: message.content }],
+          timestamp: message.timestamp,
+          tabIds: message.tabIds
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Sol Background: Error in handleUpdateConversation:', error);
+    throw error;
+  }
+}
+
+async function handleDeleteConversation(id: string) {
+  try {
+    await storage.database.transaction('rw', storage.database.conversations, storage.database.messages, async () => {
+      await storage.database.conversations.delete(id);
+      await storage.database.messages.where('convId').equals(id).delete();
+    });
+  } catch (error) {
+    console.error('Sol Background: Error in handleDeleteConversation:', error);
+    throw error;
+  }
+}
+
+async function handleDeleteAllConversations() {
+  try {
+    await storage.database.transaction('rw', storage.database.conversations, storage.database.messages, async () => {
+      await storage.database.conversations.clear();
+      await storage.database.messages.clear();
+    });
+  } catch (error) {
+    console.error('Sol Background: Error in handleDeleteAllConversations:', error);
+    throw error;
+  }
+}
 
 // Initialize everything
 setupMessageHandlers();
 keepAlive();
 
 browser.runtime.onStartup.addListener(async () => {
-  console.log('Sol Background: onStartup event fired, extension is active.');
   await checkAndResetSchema();
 });
 
 // Clean up snapshots when tabs are closed or updated
 browser.tabs.onRemoved.addListener((tabId) => {
-  console.log(`Sol Background: Tab ${tabId} closed, cleaning up snapshots`);
   snapshotManager.clearTab(tabId);
 });
 
 browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === 'loading' && changeInfo.url) {
-    console.log(`Sol Background: Tab ${tabId} navigating to ${changeInfo.url}, will clear snapshots if needed`);
   }
 });
 
 browser.runtime.onInstalled.addListener(async (details) => {
-  console.log('Sol Background: onInstalled event fired with reason: ', details.reason);
   if (details.reason === 'install') {
     const url = browser.runtime.getURL('src/pages/dashboard/index.html');
     browser.tabs.create({ url: url });

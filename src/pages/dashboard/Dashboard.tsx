@@ -6,11 +6,13 @@ import {
   EyeSlashIcon,
   TrashIcon,
   DocumentArrowDownIcon,
-  ClipboardDocumentIcon
+  ClipboardDocumentIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import { StorageData, Conversation } from '../../services/storage';
 import settingsService from '../../utils/settings';
 import conversation from '../../services/conversation';
+import { UiPortService } from '@src/services/messaging/uiPortService';
 import exportService from '../../utils/export';
 import { ApiService, PROVIDERS, Model } from '@src/services/api';
 import { Button } from '@src/components/ui/button';
@@ -28,7 +30,8 @@ export default function Dashboard() {
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'syncing' | 'synced'>('idle');
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+  const [conversationError, setConversationError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('general');
 
   // Handle URL hash routing
@@ -53,28 +56,47 @@ export default function Dashboard() {
     window.location.hash = value;
   };
 
-  // Simplified data loading
-  const loadData = useCallback(async () => {
+  // Load conversations with proper error handling
+  const loadConversations = useCallback(async () => {
     try {
-      const [settingsData, conversationsData] = await Promise.all([
-        settingsService.getAll(),
-        conversation.getConversations()
-      ]);
+      setIsLoadingConversations(true);
+      setConversationError(null);
       
-      setSettings(settingsData);
+      // Use UiPortService to get conversations from background service
+      const uiPortService = UiPortService.getInstance();
+      const conversationsData = await uiPortService.getConversations();
       setConversations(conversationsData);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      setConversationError('Failed to load conversation history. Please try refreshing the page.');
+      setConversations([]); // Reset to empty array on error
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, []);
+
+  // Load settings data
+  const loadSettings = useCallback(async () => {
+    try {
+      const settingsData = await settingsService.getAll();
+      setSettings(settingsData);
       
       if (settingsData.apiKey && settingsData.provider) {
         loadModels(settingsData.provider, settingsData.apiKey, settingsData.customEndpoint, settingsData.model);
       }
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading settings:', error);
     }
   }, []);
 
+  // Initial data loading
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadSettings();
+    loadConversations();
+  }, [loadSettings, loadConversations]);
+
+  // Initial data loading - removed complex subscription for now
+  // Dashboard will use polling or manual refresh for updates
 
   // Simplified save handling
   useEffect(() => {
@@ -172,15 +194,18 @@ export default function Dashboard() {
     } : null);
   };
 
-  // Simplified async handlers
+  // Enhanced async handlers with proper error handling
   const deleteConversationHandler = async (id: string) => {
     if (!confirm('Are you sure you want to delete this conversation?')) return;
     
     try {
-              await conversation.deleteConversation(id);
-      setConversations(prev => prev.filter(c => c.id !== id));
+      await conversation.deleteConversation(id);
+      // Reload conversations after deletion
+      await loadConversations();
     } catch (error) {
       console.error('Error deleting conversation:', error);
+      // Show user-friendly error message
+      alert('Failed to delete conversation. Please try again.');
     }
   };
 
@@ -231,10 +256,12 @@ export default function Dashboard() {
     if (!confirm('Are you sure you want to delete ALL conversations? This action cannot be undone.')) return;
     
     try {
-              await conversation.deleteAllConversations();
-      setConversations([]);
+      await conversation.deleteAllConversations();
+      // Reload conversations after deletion
+      await loadConversations();
     } catch (error) {
       console.error('Error deleting all conversations:', error);
+      alert('Failed to delete all conversations. Please try again.');
     }
   };
 
@@ -662,8 +689,17 @@ export default function Dashboard() {
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <Button
+                      onClick={loadConversations}
+                      disabled={isLoadingConversations}
+                      className="sol-button-small flex-shrink-0"
+                      title="Refresh conversation list"
+                    >
+                      <ArrowPathIcon className={`w-4 h-4 mr-2 ${isLoadingConversations ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                    <Button
                       onClick={exportAllConversations}
-                      disabled={conversations.length === 0}
+                      disabled={conversations.length === 0 || isLoadingConversations}
                       className="sol-button-small flex-shrink-0"
                     >
                       <DocumentArrowDownIcon className="w-4 h-4 mr-2" />
@@ -671,7 +707,7 @@ export default function Dashboard() {
                     </Button>
                     <Button
                       onClick={deleteAllConversationsHandler}
-                      disabled={conversations.length === 0}
+                      disabled={conversations.length === 0 || isLoadingConversations}
                       className="sol-button-danger flex-shrink-0"
                     >
                       <TrashIcon className="w-4 h-4 mr-2" />
@@ -680,9 +716,26 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {isLoadingConversations ? (
+                {/* Error state */}
+                {conversationError ? (
+                  <div className="text-center py-12">
+                    <div className="text-red-600 mb-4">
+                      <p className="font-medium">Failed to load conversations</p>
+                      <p className="text-sm text-red-500 mt-1">{conversationError}</p>
+                    </div>
+                    <Button
+                      onClick={loadConversations}
+                      className="sol-button-small"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                ) : isLoadingConversations ? (
                   <div className="flex items-center justify-center py-8">
-                    <div className="w-6 h-6 border-2 border-gray-200 border-t-gray-900 rounded-full animate-spin"></div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 border-2 border-gray-200 border-t-gray-900 rounded-full animate-spin"></div>
+                      <span className="text-sm text-gray-600">Loading conversations...</span>
+                    </div>
                   </div>
                 ) : conversations.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">

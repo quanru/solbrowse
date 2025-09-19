@@ -37,12 +37,10 @@ async function getTabId(): Promise<number | null> {
 
 // Entry point
 if (isExtensionContext()) {
-  console.log('Sol Content Script: Skipping execution in extension context');
 } else {
   (async () => {
     // Prevent multiple injections (e.g. due to SPA re-rendering)
     if ((window as any).solContentScript) {
-      console.log('Sol Content Script: Already initialised');
       return;
     }
 
@@ -74,7 +72,7 @@ if (isExtensionContext()) {
     scraper.start();
 
     // Expose globally for debugging/testing
-    (window as any).solContentScript = { askBar, sideBar, scraper };
+    (window as any).solContentScript = { askBar, sideBar, scraper, conversationService: conversation };
 
           // Listen for debug context requests from the AskBar shadow DOM
     window.addEventListener('message', (event) => {
@@ -97,6 +95,5 @@ if (isExtensionContext()) {
       conversation.cleanupTab(tabIdString);
     });
 
-    console.log('Sol Content Script: Controllers initialised');
   })();
 } 

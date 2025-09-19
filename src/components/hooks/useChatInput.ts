@@ -300,18 +300,27 @@ export const useChatInput = (): UseChatInputReturn => {
     if (!input.trim()) return;
 
     const tabsToUse = extractTabIdsFromText(input);
-    console.log('Sol ChatInput: Inline mentioned tabIds', tabsToUse);
     
     const chipTabIds = selectedTabChips.flatMap(chip => 
       chip.isCollective && chip.tabIds ? chip.tabIds : [chip.id]
     );
     const allTabIds = [...new Set([...tabsToUse, ...chipTabIds])];
-    console.log('Sol ChatInput: All tabIds to send', allTabIds);
 
     let activeId = conversationService.activeConversationId;
     if (!activeId) {
       activeId = await conversationService.createNewConversation();
-      console.log('Sol ChatInput: Created new conversation', activeId);
+      
+      // Verify the activeConversationId was set correctly
+      if (conversationService.activeConversationId !== activeId) {
+        console.warn('⚠️ Sol ChatInput: activeConversationId mismatch after creation!', {
+          expected: activeId,
+          actual: conversationService.activeConversationId
+        });
+        
+        // Force switch to the created conversation to ensure state consistency
+        await conversationService.switchToConversation(activeId);
+      }
+    } else {
     }
 
     await conversationService.addUserMessage(
@@ -322,7 +331,6 @@ export const useChatInput = (): UseChatInputReturn => {
     if (allTabIds.length > 0) {
       try {
         const pages = await uiPortService.current.getContent(allTabIds);
-        console.log('Sol ChatInput: getContent returned', pages.map(p => ({ id: p.tabId, title: p.title, contentLen: p.content.length })));
       } catch (err) {
         console.warn('Sol ChatInput: getContent failed', err);
       }

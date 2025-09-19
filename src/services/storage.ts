@@ -216,9 +216,7 @@ export class StorageService {
     try {
       this.channel = new BroadcastChannel('sol_chat_sync');
       this.channel.addEventListener('message', this.handleBroadcastMessage.bind(this));
-      console.log('Sol Sync: Using BroadcastChannel');
     } catch (error) {
-      console.log('Sol Sync: BroadcastChannel not available, using storage events');
       this.useStorageEvents = true;
       browser.storage.onChanged.addListener(this.handleStorageChange.bind(this));
     }

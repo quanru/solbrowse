@@ -97,6 +97,11 @@ export class PortManager {
     }
   }
 
+  // Get content ports for background script access
+  getContentPorts(): Map<number, browser.Runtime.Port> {
+    return this.contentPorts;
+  }
+
 
 
   // Get active tab IDs
@@ -142,7 +147,7 @@ export class PortManager {
 
     // Store the port
     this.contentPorts.set(tabId, port);
-    console.log(`Sol PortManager: Content script connected for tab ${tabId}`);
+    console.log(`Sol PortManager: Content script connected for tab ${tabId} (total: ${this.contentPorts.size})`);
 
     // Handle messages
     port.onMessage.addListener((message: unknown) => {
