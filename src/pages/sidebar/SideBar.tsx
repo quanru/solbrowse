@@ -14,6 +14,9 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
   const [isVisible, setIsVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [position, setPosition] = useState<string>(initialPosition);
+  const [hasAutoAddedCurrentTab, setHasAutoAddedCurrentTab] = useState(false);
+  const [currentTabId, setCurrentTabId] = useState<number | null>(null);
+  const [pageUrl, setPageUrl] = useState<string>('');
 
   // Refs
   const sideBarRef = useRef<HTMLDivElement>(null);
@@ -51,6 +54,48 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
   useEffect(() => {
     setPosition(initialPosition);
   }, [initialPosition]);
+
+  // Initialize messaging system to receive updates from controller
+  useEffect(() => {
+    // For shadow DOM, we'll handle tab info through the shadow host element
+    const handleShadowMessage = (event: CustomEvent) => {
+      const message = event.detail;
+      if (message.type === 'TAB_INFO_RESPONSE') {
+        setCurrentTabId(message.tabId);
+        setPageUrl(message.url);
+      }
+    };
+
+    // Get the shadow host element and listen for custom events
+    const shadowHost = document.querySelector('sol-overlay-container') as HTMLElement;
+    if (shadowHost) {
+      shadowHost.addEventListener('sol-shadow-message', handleShadowMessage as EventListener);
+      
+      // Request current tab info through shadow event
+      shadowHost.dispatchEvent(new CustomEvent('sol-shadow-message', {
+        detail: { type: 'GET_CURRENT_TAB', requestId: 'sidebar-init' },
+        bubbles: false,
+        composed: false
+      }));
+    }
+
+    return () => {
+      if (shadowHost) {
+        shadowHost.removeEventListener('sol-shadow-message', handleShadowMessage as EventListener);
+      }
+    };
+  }, []);
+
+  // Auto-add current tab when SideBar opens (only once)
+  useEffect(() => {
+    if (currentTabId && chatInput.availableTabs.length > 0 && !hasAutoAddedCurrentTab) {
+      const currentTab = chatInput.availableTabs.find(tab => tab.id === currentTabId);
+      if (currentTab) {
+        chatInput.handleTabReAdd(currentTab);
+        setHasAutoAddedCurrentTab(true);
+      }
+    }
+  }, [currentTabId, chatInput.availableTabs, hasAutoAddedCurrentTab, chatInput.handleTabReAdd]);
 
   // Apply color scheme
   useEffect(() => {

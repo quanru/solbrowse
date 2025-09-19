@@ -200,6 +200,10 @@ export class SideBarController {
         case 'sol-trigger-close':
           this.hide();
           break;
+        case 'GET_CURRENT_TAB':
+          // Handle tab information requests
+          this.handleTabInfoRequest(message);
+          break;
         default:
           // Handle other shadow DOM messages
           break;
@@ -207,6 +211,23 @@ export class SideBarController {
     };
 
     this.shadowInstance.hostElement.addEventListener('sol-shadow-message', handleShadowMessage as EventListener);
+  }
+
+  private handleTabInfoRequest(message: any): void {
+    // Respond to tab information requests from shadow DOM components
+    if (this.shadowInstance) {
+      this.shadowInstance.hostElement.dispatchEvent(new CustomEvent('sol-shadow-message', {
+        detail: {
+          type: 'TAB_INFO_RESPONSE',
+          requestId: message.requestId,
+          tabId: (window as any).solTabId ?? null,
+          url: window.location.href,
+          title: document.title,
+        },
+        bubbles: false,
+        composed: false
+      }));
+    }
   }
 
   // Utility similar to AskBarController
