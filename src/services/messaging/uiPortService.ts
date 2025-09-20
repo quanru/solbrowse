@@ -128,9 +128,6 @@ export class UiPortService {
       case 'TABS_RESPONSE':
         this.handleTabsResponse(message);
         break;
-      case 'CONVERSATIONS_RESPONSE':
-        this.handleConversationsResponse(message);
-        break;
       case 'LLM_DELTA':
         this.handleLlmDelta(message);
         break;
@@ -160,13 +157,6 @@ export class UiPortService {
     }
   }
 
-  private handleConversationsResponse(message: any): void {
-    const request = this.pendingRequests.get(message.requestId);
-    if (request && request.type === 'GET_CONVERSATIONS') {
-      request.resolve(message.conversations);
-      this.pendingRequests.delete(message.requestId);
-    }
-  }
 
   private handleLlmDelta(message: UiLlmDeltaMsg): void {
     const callbacks = this.streamingCallbacks.get(message.requestId);
@@ -200,7 +190,7 @@ export class UiPortService {
   }
 
   private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private sendMessage(message: UiPortMsg): void {
@@ -234,48 +224,6 @@ export class UiPortService {
     this.streamingCallbacks.clear();
   }
 
-  /**
-   * Get conversations from background service
-   */
-  async getConversations(): Promise<any[]> {
-    if (!this.isConnected || !this.port) {
-      throw new Error('Not connected to background script');
-    }
-
-    const requestId = this.generateRequestId();
-    
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(requestId);
-        reject(new Error('Conversations request timed out'));
-      }, 30000); // 30 second timeout for checking multiple tabs
-
-      this.pendingRequests.set(requestId, {
-        resolve: (conversations: any[]) => {
-          clearTimeout(timeout);
-          resolve(Array.isArray(conversations) ? conversations : []);
-        },
-        reject: (error: Error) => {
-          clearTimeout(timeout);
-          reject(error);
-        },
-        type: 'GET_CONVERSATIONS'
-      });
-
-      const message = {
-        type: 'GET_CONVERSATIONS',
-        requestId
-      };
-
-      try {
-        this.sendMessage(message);
-      } catch (error) {
-        clearTimeout(timeout);
-        this.pendingRequests.delete(requestId);
-        reject(error);
-      }
-    });
-  }
 
   /**
    * Get available tabs

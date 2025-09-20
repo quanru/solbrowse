@@ -85,28 +85,6 @@ export interface UiTabsResponseMsg {
   }>;
 }
 
-export interface UiGetConversationsMsg {
-  type: 'GET_CONVERSATIONS';
-  requestId: string;
-}
-
-export interface UiConversationsResponseMsg {
-  type: 'CONVERSATIONS_RESPONSE';
-  requestId: string;
-  conversations: Array<{
-    id: string;
-    title: string;
-    url: string;
-    messages: Array<{
-      type: 'user' | 'assistant';
-      content: string;
-      timestamp: number;
-      tabIds?: number[];
-    }>;
-    createdAt: number;
-    updatedAt: number;
-  }>;
-}
 
 export type UiPortMsg = 
   | UiGetContentMsg 
@@ -116,9 +94,7 @@ export type UiPortMsg =
   | UiLlmDoneMsg 
   | UiLlmErrorMsg
   | UiListTabsMsg
-  | UiTabsResponseMsg
-  | UiGetConversationsMsg
-  | UiConversationsResponseMsg;
+  | UiTabsResponseMsg;
 
 // Shadow DOM Communication Messages (replacing iframe messages)
 export interface ShadowGetCurrentTabMsg {

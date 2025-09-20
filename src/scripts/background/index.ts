@@ -13,8 +13,6 @@ import {
   UiListTabsMsg,
   UiContentResponseMsg,
   UiTabsResponseMsg,
-  UiGetConversationsMsg,
-  UiConversationsResponseMsg,
   GetCurrentTabIdResponseMsg
 } from '@src/types/messaging';
 import storage from '@src/services/storage';
@@ -61,47 +59,6 @@ const keepAlive = () => {
   }, 20000);
 };
 
-// Function to prioritize tabs that are more likely to have conversation data
-const getTabPriority = (url: string): number => {
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    
-    // High priority: Development and coding sites
-    if (hostname.includes('github.com') || 
-        hostname.includes('gitlab.com') ||
-        hostname.includes('stackoverflow.com') ||
-        hostname.includes('codepen.io') ||
-        hostname.includes('replit.com') ||
-        hostname.includes('codesandbox.io')) {
-      return 100;
-    }
-    
-    // Medium priority: Documentation and tech sites
-    if (hostname.includes('docs.') ||
-        hostname.includes('developer.') ||
-        hostname.includes('dev.') ||
-        hostname.includes('api.') ||
-        hostname.includes('npmjs.com') ||
-        hostname.includes('pypi.org')) {
-      return 50;
-    }
-    
-    // Lower priority: Social media and news sites (less likely to have programming conversations)
-    if (hostname.includes('twitter.com') ||
-        hostname.includes('x.com') ||
-        hostname.includes('facebook.com') ||
-        hostname.includes('instagram.com') ||
-        hostname.includes('tiktok.com') ||
-        hostname.includes('news.')) {
-      return 10;
-    }
-    
-    // Default priority for other sites
-    return 30;
-  } catch {
-    return 0;
-  }
-};
 
 // Consolidated function to process tab snapshots into page format
 const processTabSnapshots = (snapshots: Array<any>, tabIds: number[]) => {
@@ -242,140 +199,6 @@ const setupMessageHandlers = () => {
         type: 'TABS_RESPONSE',
         requestId: message.requestId,
         tabs: []
-      };
-    }
-  });
-
-  portManager.addRequestHandler<UiGetConversationsMsg, UiConversationsResponseMsg>('GET_CONVERSATIONS', async (message, port) => {
-    try {
-      // Try to get conversations from content scripts by executing script in web pages
-      // Try to execute script in any available tab that might have content script
-      const allTabs = await browser.tabs.query({});
-      
-      // Filter and prioritize tabs
-      const validTabs = allTabs.filter(tab => {
-        if (!tab.id || !tab.url) return false;
-        
-        // Skip extension pages and special URLs
-        if (tab.url.startsWith('chrome://') || 
-            tab.url.startsWith('chrome-extension://') ||
-            tab.url.startsWith('moz-extension://') ||
-            tab.url.startsWith('about:') ||
-            tab.url.startsWith('data:')) {
-          return false;
-        }
-        return true;
-      });
-      
-      // Prioritize tabs that are more likely to have conversation data
-      const prioritizedTabs = validTabs.sort((a, b) => {
-        const aPriority = getTabPriority(a.url || '');
-        const bPriority = getTabPriority(b.url || '');
-        return bPriority - aPriority; // Higher priority first
-      });
-      
-      // Limit to first 10 tabs to avoid timeout
-      const tabsToCheck = prioritizedTabs.slice(0, 10);
-      
-      for (const tab of tabsToCheck) {
-        
-        try {
-          const results = await browser.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: async () => {
-              try {
-                // Wait a bit for content script to initialize if needed
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                // Access the conversation service from the content script context
-                const solContentScript = (window as any).solContentScript;
-                if (solContentScript?.conversationService) {
-                  const conversations = await solContentScript.conversationService.getConversations();
-                  return { success: true, conversations, tabId: (window as any).solTabId };
-                } else {
-                  return { success: false, conversations: [], reason: 'no_service' };
-                }
-              } catch (error) {
-                console.error('Error getting conversations:', error);
-                return { success: false, conversations: [], reason: error.message };
-              }
-            }
-          });
-          
-          if (results && results[0] && results[0].result) {
-            const result = results[0].result;
-            
-            if (result.success && result.conversations.length > 0) {
-              return {
-                type: 'CONVERSATIONS_RESPONSE',
-                requestId: message.requestId,
-                conversations: result.conversations
-              };
-            }
-          }
-        } catch (scriptError) {
-          // Continue to next tab
-        }
-      }
-      
-      // Fallback: Get conversations from background storage
-      
-      // Fallback: Get conversations from background storage
-      const dbConversations = await storage.database.conversations
-        .orderBy('updatedAt')
-        .reverse()
-        .toArray();
-      
-      
-      // Load messages for each conversation
-      const conversations = await Promise.all(
-        dbConversations.map(async (dbConv) => {
-          try {
-            const messages = await storage.database.messages
-              .where('[convId+idx]')
-              .between([dbConv.id, 0], [dbConv.id, Infinity])
-              .toArray();
-            
-            return {
-              id: dbConv.id,
-              title: dbConv.title,
-              url: dbConv.url,
-              messages: messages.map(msg => {
-                const textPart = msg.parts.find(p => p.type === 'text');
-                return {
-                  type: msg.type,
-                  content: textPart?.text || '',
-                  timestamp: msg.timestamp,
-                  tabIds: msg.tabIds
-                };
-              }),
-              createdAt: dbConv.createdAt,
-              updatedAt: dbConv.updatedAt
-            };
-          } catch (msgError) {
-            return {
-              id: dbConv.id,
-              title: dbConv.title,
-              url: dbConv.url,
-              messages: [],
-              createdAt: dbConv.createdAt,
-              updatedAt: dbConv.updatedAt
-            };
-          }
-        })
-      );
-
-      return {
-        type: 'CONVERSATIONS_RESPONSE',
-        requestId: message.requestId,
-        conversations
-      };
-    } catch (error) {
-      console.error('Background: Error getting conversations:', error);
-      return {
-        type: 'CONVERSATIONS_RESPONSE',
-        requestId: message.requestId,
-        conversations: []
       };
     }
   });

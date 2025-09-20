@@ -73,4 +73,4 @@ export class ExportUtil {
 }
 
 const exportUtil = ExportUtil.getInstance();
-export default exportUtil; 
+export default exportUtil;

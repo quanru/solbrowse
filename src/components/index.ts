@@ -7,7 +7,6 @@ export { default as ChatHeader } from './shared/ChatHeader';
 
 // Hooks
 export { useConversationService } from './hooks/useConversation';
-export { useConversationStorage } from './hooks/useConversationStorage';
 export { useCopyMessage } from './hooks/useCopyMessage';
 export { useChat } from './hooks/useChat';
 export { useChatInput, type TabChip } from './hooks/useChatInput';
