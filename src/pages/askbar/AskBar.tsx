@@ -61,6 +61,21 @@ export const AskBar: React.FC = () => {
     chatInput.inputRef.current?.focus();
   }, []);
 
+  // Global ESC key handler
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, []);
+
   // Initialize messaging system to receive updates from controller
   useEffect(() => {
     // For shadow DOM, we'll handle tab info through the shadow host element

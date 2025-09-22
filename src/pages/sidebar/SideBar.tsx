@@ -50,6 +50,21 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
     chatInput.inputRef.current?.focus();
   }, []);
 
+  // Global ESC key handler
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, []);
+
   // Update position when props change
   useEffect(() => {
     setPosition(initialPosition);
@@ -123,10 +138,10 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
 
   const handleClose = () => {
     if (Date.now() - mountTimeRef.current < 200) return;
-    
+
     setIsClosing(true);
     setIsVisible(false);
-    
+
     setTimeout(() => {
       // Send message through shadow DOM event system
       const hostElement = document.querySelector('#sol-sidebar-container');
@@ -138,6 +153,12 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
         }));
       }
     }, 300);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleClose();
+    }
   };
 
   const getPositionClasses = (pos: string) => {
@@ -158,6 +179,8 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
         width: '500px'
       }}
       onKeyDown={(e) => {
+        // Handle internal shortcuts (like Escape to close)
+        handleKeyDown(e);
         // Prevent keyboard events from bubbling to page to avoid triggering page shortcuts
         e.stopPropagation();
       }}
