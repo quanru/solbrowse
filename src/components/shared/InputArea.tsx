@@ -9,6 +9,8 @@ interface Props {
   input: string;
   onInputChange: (val: string) => void;
   onInputKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onCompositionStart?: () => void;
+  onCompositionEnd?: () => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
 
   // Dropdown state
@@ -33,6 +35,8 @@ const InputArea: React.FC<Props> = ({
   input,
   onInputChange,
   onInputKeyDown,
+  onCompositionStart,
+  onCompositionEnd,
   inputRef,
   showDropdown,
   filteredTabs,
@@ -113,6 +117,12 @@ const InputArea: React.FC<Props> = ({
             // Prevent event bubbling to page to avoid triggering page shortcuts
             e.stopPropagation();
             onInputKeyDown(e);
+          }}
+          onCompositionStart={(e) => {
+            if (onCompositionStart) onCompositionStart();
+          }}
+          onCompositionEnd={(e) => {
+            if (onCompositionEnd) onCompositionEnd();
           }}
           placeholder={placeholder || "Ask a question about this page..."}
           rows={1}

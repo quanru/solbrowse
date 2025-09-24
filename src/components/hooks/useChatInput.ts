@@ -21,32 +21,34 @@ export interface UseChatInputReturn {
   // Input state
   input: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
-  
+
   // Tab chips state
   selectedTabChips: TabChip[];
   availableTabs: TabChip[];
-  
+
   // Dropdown state
   showDropdown: boolean;
   filteredTabs: TabInfo[];
   dropdownSelectedIndex: number;
   dropdownRef: React.RefObject<HTMLDivElement | null>;
   searchTerm: string;
-  
+
   // Chat state
   chatState: any;
   isStreaming: boolean;
   error: string | null;
-  
+
   // Handlers
   handleInputChange: (newValue: string) => void;
   handleInputKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  handleCompositionStart: () => void;
+  handleCompositionEnd: () => void;
   handleSubmit: () => Promise<void>;
   handleTabRemoveById: (tabId: number) => void;
   handleTabReAdd: (tab: { id: number; title: string; url: string; favIconUrl?: string }) => void;
   insertTabMention: (tab: TabChip | { id: number; title: string; url: string; favIconUrl?: string }) => void;
   setDropdownSelectedIndex: React.Dispatch<React.SetStateAction<number>>;
-  
+
   // Utility functions
   truncateTitle: (title: string, maxLength?: number) => string;
 }
@@ -63,6 +65,9 @@ export const useChatInput = (): UseChatInputReturn => {
   const [dropdownSelectedIndex, setDropdownSelectedIndex] = useState(0);
   const [mentionStartPos, setMentionStartPos] = useState(-1);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // IME composition state
+  const [isComposing, setIsComposing] = useState(false);
 
   // Refs
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -265,9 +270,19 @@ export const useChatInput = (): UseChatInputReturn => {
   };
 
   const handleInputKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle Escape key globally (always allow closing dialog)
+    if (e.key === 'Escape') {
+      if (showDropdown) {
+        setShowDropdown(false);
+        setMentionStartPos(-1);
+      }
+      // Don't prevent default for Escape - let it bubble up to close dialog
+      return;
+    }
+
     if (showDropdown) {
       const totalOptions = filteredTabs.length + 1;
-      
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setDropdownSelectedIndex(prev => (prev + 1) % totalOptions);
@@ -286,11 +301,13 @@ export const useChatInput = (): UseChatInputReturn => {
         } else if (filteredTabs.length > 0 && dropdownSelectedIndex - 1 < filteredTabs.length) {
           insertTabMention(filteredTabs[dropdownSelectedIndex - 1]);
         }
-      } else if (e.key === 'Escape') {
-        setShowDropdown(false);
-        setMentionStartPos(-1);
       }
     } else if (e.key === 'Enter' && !e.shiftKey) {
+      // Block submission during IME composition
+      if (e.keyCode === 229) {
+        return; // Don't prevent default, let IME handle it
+      }
+
       e.preventDefault();
       handleSubmit();
     }
@@ -343,6 +360,14 @@ export const useChatInput = (): UseChatInputReturn => {
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+
+  const handleCompositionEnd = () => {
+    setIsComposing(false);
+  };
+
   const truncateTitle = (title: string, maxLength: number = 20): string => {
     return title.length > maxLength ? `${title.substring(0, maxLength)}...` : title;
   };
@@ -360,32 +385,34 @@ export const useChatInput = (): UseChatInputReturn => {
     // Input state
     input,
     inputRef,
-    
+
     // Tab chips state
     selectedTabChips,
     availableTabs,
-    
+
     // Dropdown state
     showDropdown,
     filteredTabs,
     dropdownSelectedIndex,
     dropdownRef,
     searchTerm,
-    
+
     // Chat state
     chatState,
     isStreaming: chatState.isStreaming,
     error: chatState.error,
-    
+
     // Handlers
     handleInputChange,
     handleInputKeyDown,
+    handleCompositionStart,
+    handleCompositionEnd,
     handleSubmit,
     handleTabRemoveById,
     handleTabReAdd,
     insertTabMention,
     setDropdownSelectedIndex,
-    
+
     // Utility functions
     truncateTitle
   };

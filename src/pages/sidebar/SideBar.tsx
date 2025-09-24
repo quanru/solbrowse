@@ -249,6 +249,8 @@ export const SideBar: React.FC<SideBarProps> = ({ position: initialPosition = 'l
             input={chatInput.input}
             onInputChange={chatInput.handleInputChange}
             onInputKeyDown={chatInput.handleInputKeyDown}
+            onCompositionStart={chatInput.handleCompositionStart}
+            onCompositionEnd={chatInput.handleCompositionEnd}
             inputRef={chatInput.inputRef}
             showDropdown={chatInput.showDropdown}
             filteredTabs={chatInput.filteredTabs}
